@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://sdk.mercadopago.com/js/v2"></script>
+</head>
+<body style="margin:0;padding:0;background:white;">
+<div id="cardPaymentBrick_container"></div>
+<script>
+    const urlParams = new URLSearchParams(window.location.search);
+
+    const amount = parseFloat(urlParams.get('amount')) || 0;
+    const apiUrl = urlParams.get('apiUrl');
+    const reservationId = urlParams.get('reservationId');
+    const apiKey = urlParams.get('apiKey');
+
+    const mp = new MercadoPago('TEST-1f8e0899-68a4-4042-8902-68dedc91dab8', {
+        locale: 'es-AR'
+    });
+
+    const bricksBuilder = mp.bricks();
+
+    const renderCardPaymentBrick = async (bricksBuilder) => {
+        const settings = {
+            initialization: {
+                amount: amount,
+                payer: {
+                    email: "",
+                },
+            },
+            customization: {
+                visual: {
+                    style: {
+                        theme: 'default'
+                    }
+                },
+                paymentMethods: {
+                    maxInstallments: 1,
+                }
+            },
+            callbacks: {
+                onReady: () => {
+                    window.ReactNativeWebView?.postMessage('BRICK_READY');
+                },
+                onSubmit: (cardFormData) => {
+                    return new Promise((resolve, reject) => {
+                        window.ReactNativeWebView?.postMessage(JSON.stringify({
+                            type: 'PAYMENT_SUBMISSION',
+                            data: cardFormData
+                        }));
+
+                        fetch(`${apiUrl}/payments/${reservationId}/process_payment`, {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                                "c-api-key": apiKey
+                            },
+                            body: JSON.stringify(cardFormData)
+                        })
+                            .then((response) => response.json())
+                            .then((response) => {
+                                window.ReactNativeWebView?.postMessage(JSON.stringify({
+                                    type: 'PAYMENT_RESPONSE',
+                                    data: response
+                                }));
+                                resolve();
+                            })
+                            .catch((error) => {
+                                window.ReactNativeWebView?.postMessage(JSON.stringify({
+                                    type: 'PAYMENT_ERROR',
+                                    error: error.message
+                                }));
+                                reject();
+                            });
+                    });
+                },
+                onError: (error) => {
+                    window.ReactNativeWebView?.postMessage(JSON.stringify({
+                        type: 'BRICK_ERROR',
+                        error: error
+                    }));
+                },
+            },
+        };
+        window.cardPaymentBrickController = await bricksBuilder.create('cardPayment', 'cardPaymentBrick_container', settings);
+    };
+
+    renderCardPaymentBrick(bricksBuilder);
+</script>
+</body>
+</html>
